@@ -1,12 +1,14 @@
-// 캐시 버전 - index.html의 version-tag 표시(v1.0)와 항상 같이 올릴 것
-const CACHE_NAME = 'similar-song-finder-v1.0';
+// 캐시 버전 - index.html의 version-tag 표시(v2.0)와 항상 같이 올릴 것
+const CACHE_NAME = 'similar-song-finder-v2.0';
 
 const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './fonts/Pretendard-Regular.woff2',
+  './fonts/Pretendard-SemiBold.woff2'
 ];
 
 self.addEventListener('install', (event) => {
