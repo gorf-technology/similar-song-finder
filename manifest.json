@@ -1,6 +1,6 @@
 {
-  "name": "비슷한 노래 찾기",
-  "short_name": "비슷한노래",
+  "name": "노래 찾기",
+  "short_name": "노래찾기",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

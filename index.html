@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>비슷한 노래 찾기</title>
+<title>노래 찾기</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
@@ -27,9 +27,7 @@
     --ink: #1F1B24;
     --ink-soft: #6B6673;
     --coral: #FF5A5F;
-    --coral-tint: #FFF3E0;
     --indigo: #6C5CE7;
-    --indigo-tint: #F0EEFF;
     --line: #E8E6ED;
     --font: 'Pretendard', system-ui, -apple-system, "Segoe UI", sans-serif;
   }
@@ -73,8 +71,6 @@
     color: var(--ink-soft);
     margin-bottom: 40px;
   }
-  .subtitle b.coral { color: var(--coral); font-weight: 600; }
-  .subtitle b.indigo { color: var(--indigo); font-weight: 600; }
 
   .field { margin-bottom: 16px; }
   .field-caption {
@@ -170,30 +166,22 @@
     line-height: 1.5;
   }
   .searched-heading b { color: var(--ink); font-weight: 600; }
-  .searched-heading .hl { color: var(--coral); font-weight: 600; }
 
-  .side-block {
+  .result-list {
+    background: #F7F6FA;
     border-radius: 18px;
-    padding: 18px;
+    padding: 8px 18px;
     margin-bottom: 16px;
   }
-  .side-block.accuracy { background: var(--coral-tint); }
-  .side-block.diversity { background: var(--indigo-tint); }
-
-  .side-label {
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 12px;
-  }
-  .side-label.accuracy { color: var(--coral); }
-  .side-label.diversity { color: var(--indigo); }
 
   .track-row {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 0;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
   }
+  .track-row:last-child { border-bottom: none; }
   .track-num {
     font-size: 13px;
     font-weight: 600;
@@ -277,8 +265,8 @@
 
   <!-- ===== 1페이지: 검색 ===== -->
   <section id="page-search" class="page active">
-    <div class="wordmark">비슷한 노래 찾기</div>
-    <div class="subtitle">3곡은 <b class="coral">찰떡</b>, 2곡은 <b class="indigo">깜짝</b></div>
+    <div class="wordmark">노래 찾기</div>
+    <div class="subtitle">노래를 검색하면 비슷한 노래 5곡을 찾아드려요</div>
 
     <div class="field">
       <label class="field-caption" for="input-artist">가수</label>
@@ -320,7 +308,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v2.0</div>
+  <div class="version-tag">v2.3</div>
 </div>
 
 <script>
@@ -331,10 +319,10 @@ const CONFIG = {
   itunesBaseUrl: 'https://itunes.apple.com/search',
 
   candidateLimit: 20,               // track.getSimilar 요청 개수
-  accuracyPoolSize: 12,             // dedup 후 상위 N개 = 찰떡 pool
-  diversityPoolSize: 8,             // 그 다음 N개 = 깜짝 pool
-  pickFromAccuracy: 3,              // 최종 결과 중 찰떡 pool에서 뽑을 개수
-  pickFromDiversity: 2,             // 최종 결과 중 깜짝 pool에서 뽑을 개수
+  accuracyPoolSize: 12,             // dedup 후 상위 N개 = 정확도(accuracy) 풀
+  diversityPoolSize: 8,             // 그 다음 N개 = 다양성(diversity) 풀
+  pickFromAccuracy: 3,              // 최종 결과 중 정확도 풀에서 뽑을 개수
+  pickFromDiversity: 2,             // 최종 결과 중 다양성 풀에서 뽑을 개수
 
   jsonpTimeoutMs: 5000,             // JSONP 공통 타임아웃 (last.fm, iTunes)
 
@@ -459,7 +447,7 @@ function dedupByArtist(tracks) {
 }
 
 /**
- * pool을 찰떡/깜짝 구간으로 나누고 무작위 추출
+ * pool을 정확도/다양성 구간으로 나누고 무작위 추출
  * Args: pool (Array) - dedup 완료, match 내림차순
  * Returns: {accuracy: Array, diversity: Array}
  */
@@ -599,21 +587,12 @@ function renderTrackRows(tracks) {
 /** Args: accuracyTracks, diversityTracks. Returns: 없음 (DOM 갱신) */
 function renderResultPage(accuracyTracks, diversityTracks) {
   document.getElementById('searched-heading').innerHTML =
-    `<b>${escapeHtml(state.searchedArtist)} - ${escapeHtml(state.searchedTrack)}</b>와 `
-    + `<span class="hl">찰떡궁합</span>인 노래`;
+    `<b>${escapeHtml(state.searchedArtist)} - ${escapeHtml(state.searchedTrack)}</b>와 비슷한 노래`;
 
+  const allTracks = [...accuracyTracks, ...diversityTracks];
   let html = '';
-  if (accuracyTracks.length > 0) {
-    html += `<div class="side-block accuracy">
-      <div class="side-label accuracy">찰떡 · ${accuracyTracks.length}곡</div>
-      ${renderTrackRows(accuracyTracks)}
-    </div>`;
-  }
-  if (diversityTracks.length > 0) {
-    html += `<div class="side-block diversity">
-      <div class="side-label diversity">깜짝 · ${diversityTracks.length}곡</div>
-      ${renderTrackRows(diversityTracks)}
-    </div>`;
+  if (allTracks.length > 0) {
+    html += `<div class="result-list">${renderTrackRows(allTracks)}</div>`;
   }
   document.getElementById('result-body').innerHTML = html;
 }
@@ -652,38 +631,27 @@ async function handleShare() {
   ctx.fillText(`${state.searchedArtist} - ${state.searchedTrack}`, 40, 70);
   ctx.fillStyle = '#6B6673';
   ctx.font = '16px Pretendard, sans-serif';
-  ctx.fillText('와 찰떡궁합인 노래', 40, 100);
+  ctx.fillText('와 비슷한 노래', 40, 100);
 
   const rows = document.querySelectorAll('#result-body .track-row');
-  const sides = document.querySelectorAll('#result-body .side-block');
   let y = 160;
-  let rowIdx = 0;
-  sides.forEach((side) => {
-    const isAccuracy = side.classList.contains('accuracy');
-    ctx.fillStyle = isAccuracy ? '#FF5A5F' : '#6C5CE7';
-    ctx.font = '600 18px Pretendard, sans-serif';
-    ctx.fillText(isAccuracy ? '찰떡' : '깜짝', 40, y);
-    y += 34;
-    side.querySelectorAll('.track-row').forEach((row) => {
-      const title = row.querySelector('.track-title').textContent;
-      const artist = row.querySelector('.track-artist').textContent;
-      ctx.fillStyle = '#1F1B24';
-      ctx.font = '600 20px Pretendard, sans-serif';
-      ctx.fillText(title, 40, y);
-      ctx.fillStyle = '#6B6673';
-      ctx.font = '14px Pretendard, sans-serif';
-      ctx.fillText(artist, 40, y + 22);
-      y += 60;
-      rowIdx++;
-    });
-    y += 20;
+  rows.forEach((row) => {
+    const title = row.querySelector('.track-title').textContent;
+    const artist = row.querySelector('.track-artist').textContent;
+    ctx.fillStyle = '#1F1B24';
+    ctx.font = '600 20px Pretendard, sans-serif';
+    ctx.fillText(title, 40, y);
+    ctx.fillStyle = '#6B6673';
+    ctx.font = '14px Pretendard, sans-serif';
+    ctx.fillText(artist, 40, y + 22);
+    y += 60;
   });
 
   canvas.toBlob(async (blob) => {
     const file = new File([blob], 'similar-songs.png', { type: 'image/png' });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: '비슷한 노래 찾기' });
+        await navigator.share({ files: [file], title: '노래 찾기' });
         return;
       } catch (e) {
         // 공유 취소/실패 시 아래 다운로드로 대체
