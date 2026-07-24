@@ -295,7 +295,7 @@
     </div>
 
     <div class="action-grid">
-      <button class="btn-secondary" id="btn-respin">다시 돌리기</button>
+      <button class="btn-secondary" id="btn-respin">다른 노래 찾기</button>
       <button class="btn-secondary" id="btn-share">공유하기</button>
       <button class="btn-secondary" id="btn-inquiry-toggle">문의하기</button>
       <button class="btn-secondary" id="btn-restart">다시찾기</button>
@@ -308,7 +308,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v2.3</div>
+  <div class="version-tag">v2.4</div>
 </div>
 
 <script>
@@ -318,9 +318,9 @@ const CONFIG = {
   lastfmBaseUrl: 'https://ws.audioscrobbler.com/2.0/',
   itunesBaseUrl: 'https://itunes.apple.com/search',
 
-  candidateLimit: 20,               // track.getSimilar 요청 개수
-  accuracyPoolSize: 12,             // dedup 후 상위 N개 = 정확도(accuracy) 풀
-  diversityPoolSize: 8,             // 그 다음 N개 = 다양성(diversity) 풀
+  candidateLimit: 30,                // track.getSimilar 요청 개수
+  accuracyPoolSize: 18,              // dedup 후 상위 N개 = 정확도(accuracy) 풀 (30의 60%)
+  diversityPoolSize: 12,             // 그 다음 N개 = 다양성(diversity) 풀 (30의 40%)
   pickFromAccuracy: 3,              // 최종 결과 중 정확도 풀에서 뽑을 개수
   pickFromDiversity: 2,             // 최종 결과 중 다양성 풀에서 뽑을 개수
 
