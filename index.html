@@ -48,7 +48,8 @@
   #app {
     max-width: 480px;
     margin: 0 auto;
-    padding: 40px 20px 48px;
+    padding: calc(40px + env(safe-area-inset-top, 0px)) 20px
+             calc(48px + env(safe-area-inset-bottom, 0px));
   }
 
   .page { display: none; }
@@ -127,36 +128,28 @@
   }
   .btn-secondary:disabled { opacity: 0.5; cursor: default; }
 
-  .pulse-row {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-top: 20px;
-    height: 12px;
-  }
-  .pulse-dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    opacity: 0.25;
-  }
-  .pulse-dot.coral { background: var(--coral); }
-  .pulse-dot.indigo { background: var(--indigo); }
-  .pulse-row.active .pulse-dot {
-    animation: pulse 1.1s ease-in-out infinite;
-  }
-  .pulse-row.active .pulse-dot.indigo { animation-delay: 0.55s; }
-  @keyframes pulse {
-    0%, 100% { opacity: 0.25; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.25); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .pulse-row.active .pulse-dot { animation: none; opacity: 0.7; }
-  }
   .search-status {
     text-align: center;
     font-size: 13px;
     color: var(--ink-soft);
     margin-top: 10px;
     min-height: 18px;
+  }
+
+  /* ===== 스켈레톤 (결과 로딩 중) ===== */
+  .skeleton-block {
+    background: #E8E6ED;
+    border-radius: 8px;
+  }
+  .skeleton-row .skeleton-block { animation: shimmer 1.2s ease-in-out infinite; }
+  .skeleton-title { width: 65%; height: 14px; margin-bottom: 8px; }
+  .skeleton-artist { width: 40%; height: 12px; }
+  @keyframes shimmer {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-row .skeleton-block { animation: none; opacity: 0.8; }
   }
 
   /* ===== 2페이지 ===== */
@@ -212,6 +205,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .track-links {
+    margin-top: 2px;
+    font-size: 11px;
+  }
+  .track-links a {
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+  .track-links a:hover,
+  .track-links a:focus-visible { text-decoration: underline; }
+  .track-links .sep { margin: 0 5px; opacity: 0.5; }
 
   .action-grid {
     display: grid;
@@ -288,10 +292,6 @@
     </div>
 
     <button class="btn-primary" id="btn-search">찾기</button>
-    <div class="pulse-row" id="pulse-row">
-      <div class="pulse-dot coral"></div>
-      <div class="pulse-dot indigo"></div>
-    </div>
     <div class="search-status" id="search-status"></div>
   </section>
 
@@ -317,7 +317,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v3.0</div>
+  <div class="version-tag">v3.1</div>
 </div>
 
 <script>
@@ -519,11 +519,40 @@ function goToPage(pageId) {
   document.getElementById(pageId).classList.add('active');
 }
 
-/** Args: on (boolean). Returns: 없음 */
-function showLoading(on) {
-  document.getElementById('pulse-row').classList.toggle('active', on);
-  document.getElementById('btn-search').disabled = on;
-  document.getElementById('search-status').textContent = on ? '찾는 중...' : '';
+/** 결과 로딩 중 트랙 5줄 자리에 회색 스켈레톤 표시. Args: 없음. Returns: 없음 */
+function renderSkeleton() {
+  const row = `
+    <div class="track-row skeleton-row">
+      <div class="track-art skeleton-block"></div>
+      <div class="track-meta">
+        <div class="skeleton-block skeleton-title"></div>
+        <div class="skeleton-block skeleton-artist"></div>
+      </div>
+    </div>`;
+  document.getElementById('result-body').innerHTML =
+    `<div class="result-list">${row.repeat(5)}</div>`;
+}
+
+/**
+ * 결과 화면의 다시찾기/공유하기 버튼 상태를 관리
+ * Args: mode ('loading' | 'ready' | 'error')
+ * Returns: 없음
+ * - loading: 보이되 비활성화 (진행 중)
+ * - ready: 보이고 활성화 (정상 결과 있음)
+ * - error: 완전히 숨김 (액션할 결과 자체가 없음)
+ */
+function setResultActionsState(mode) {
+  const respinBtn = document.getElementById('btn-respin');
+  const shareBtn = document.getElementById('btn-share');
+  if (mode === 'error') {
+    respinBtn.style.display = 'none';
+    shareBtn.style.display = 'none';
+    return;
+  }
+  respinBtn.style.display = '';
+  shareBtn.style.display = '';
+  respinBtn.disabled = (mode === 'loading');
+  shareBtn.disabled = (mode === 'loading');
 }
 
 // ================= 검색 흐름 =================
@@ -534,17 +563,26 @@ async function handleSearch() {
     document.getElementById('search-status').textContent = '가수와 곡 제목을 모두 입력해주세요.';
     return;
   }
+  document.getElementById('search-status').textContent = '';
 
-  showLoading(true);
+  // 오타 보정 전, 입력값 그대로 임시 헤딩을 먼저 보여주고 결과 화면으로 즉시 이동
+  document.getElementById('searched-heading').innerHTML =
+    `<b>${escapeHtml(artistInput)} - ${escapeHtml(trackInput)}</b> 찾는 중...`;
+  setResultActionsState('loading');
+  renderSkeleton();
+  goToPage('page-result');
+
   try {
     const corrected = await correctTrack(artistInput, trackInput);
+    document.getElementById('searched-heading').innerHTML =
+      `<b>${escapeHtml(corrected.artist)} - ${escapeHtml(corrected.track)}</b>와 비슷한 노래`;
+
     const rawTracks = await fetchSimilarTracks(corrected.artist, corrected.track);
     const deduped = dedupByArtist(rawTracks);
 
     if (deduped.length === 0) {
-      showLoading(false);
       renderErrorState('그런 곡은 찾을 수 없어요. 가수와 곡 제목을 다시 확인해주세요.');
-      goToPage('page-result');
+      setResultActionsState('error');
       return;
     }
 
@@ -553,16 +591,13 @@ async function handleSearch() {
     state.searchedTrack = corrected.track;
 
     await respin();
-    showLoading(false);
-    goToPage('page-result');
   } catch (e) {
     console.error('검색 실패', e);
-    showLoading(false);
     const msg = (CONFIG.lastfmApiKey === '')
       ? 'API 키가 비어있어요. CONFIG.lastfmApiKey를 채워넣었는지 확인해주세요.'
       : '지금 서버가 혼잡해요. 잠시 후 다시 시도해주세요. (콘솔(F12)에 자세한 에러가 남아있어요)';
     renderErrorState(msg);
-    goToPage('page-result');
+    setResultActionsState('error');
   }
 }
 
@@ -571,12 +606,14 @@ let respinRequestId = 0;
 
 /**
  * 캐시된 pool에서 다시 무작위 추출 (API 재호출 없음, 앨범아트만 새로 조회)
+ * 검색 직후 최초 호출과 "다시 찾기" 버튼 클릭 둘 다 이 함수를 공유한다
  * Args: 없음 (state 사용)
  * Returns: Promise<void>
  */
 async function respin() {
   const myRequestId = ++respinRequestId;
-  document.getElementById('btn-respin').disabled = true;
+  setResultActionsState('loading');
+  renderSkeleton();
 
   const picked = sampleRatio(state.pool);
 
@@ -594,23 +631,31 @@ async function respin() {
   if (myRequestId !== respinRequestId) return;
 
   renderResultPage(accuracyWithArt, diversityWithArt);
-  document.getElementById('btn-respin').disabled = false;
+  setResultActionsState('ready');
 }
 
 // ================= 렌더링 =================
 /** Args: tracks (Array). Returns: string (HTML) */
 function renderTrackRows(tracks) {
   if (tracks.length === 0) return '';
-  return tracks.map((t, i) => `
+  return tracks.map((t, i) => {
+    const query = encodeURIComponent(`${t.artist} ${t.name}`);
+    const appleUrl = `https://music.apple.com/search?term=${query}`;
+    const ytUrl = `https://music.youtube.com/search?q=${query}`;
+    return `
     <div class="track-row">
       <span class="track-num">${i + 1}</span>
       ${t.art ? `<img class="track-art" src="${t.art}" alt="">` : `<div class="track-art"></div>`}
       <div class="track-meta">
         <div class="track-title">${escapeHtml(t.name)}</div>
         <div class="track-artist">${escapeHtml(t.artist)}</div>
+        <div class="track-links">
+          <a href="${appleUrl}" target="_blank" rel="noopener">Apple Music</a><span class="sep">·</span><a href="${ytUrl}" target="_blank" rel="noopener">YouTube Music</a>
+        </div>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 /** Args: accuracyTracks, diversityTracks. Returns: 없음 (DOM 갱신) */
