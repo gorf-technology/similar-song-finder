@@ -125,6 +125,7 @@
     font-size: 14px;
     font-weight: 600;
   }
+  .btn-secondary:disabled { opacity: 0.5; cursor: default; }
 
   .pulse-row {
     display: flex;
@@ -316,7 +317,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v2.9</div>
+  <div class="version-tag">v3.0</div>
 </div>
 
 <script>
@@ -483,20 +484,30 @@ function sampleRandom(arr, n) {
 }
 
 // ================= iTunes 앨범아트 =================
+const albumArtCache = new Map(); // key: "artist|track" -> art URL(또는 null)
+
 /**
  * iTunes Search API로 앨범아트 조회 (last.fm image 필드는 신뢰도가 낮아 미사용)
+ * 같은 곡을 다시 찾을 때 중복 호출을 피하기 위해 결과를 캐시한다
  * Args: artist (string), track (string)
  * Returns: Promise<string|null> - 앨범아트 URL, 실패 시 null
  */
 async function fetchAlbumArt(artist, track) {
+  const cacheKey = `${artist}|${track}`.toLowerCase();
+  if (albumArtCache.has(cacheKey)) return albumArtCache.get(cacheKey);
+
   try {
     const term = encodeURIComponent(`${artist} ${track}`);
     const url = `${CONFIG.itunesBaseUrl}?term=${term}&media=music&entity=song&limit=1`;
     const data = await jsonp(url);
     const result = data && data.results && data.results[0];
-    if (!result || !result.artworkUrl100) return null;
-    return result.artworkUrl100.replace('100x100', '200x200');
+    const art = (result && result.artworkUrl100)
+      ? result.artworkUrl100.replace('100x100', '200x200')
+      : null;
+    albumArtCache.set(cacheKey, art);
+    return art;
   } catch (e) {
+    albumArtCache.set(cacheKey, null);
     return null;
   }
 }
@@ -555,12 +566,18 @@ async function handleSearch() {
   }
 }
 
+// 다시 찾기 연타 시, 나중에 응답이 온 쪽이 아니라 마지막으로 누른 요청만 반영되도록
+let respinRequestId = 0;
+
 /**
  * 캐시된 pool에서 다시 무작위 추출 (API 재호출 없음, 앨범아트만 새로 조회)
  * Args: 없음 (state 사용)
  * Returns: Promise<void>
  */
 async function respin() {
+  const myRequestId = ++respinRequestId;
+  document.getElementById('btn-respin').disabled = true;
+
   const picked = sampleRatio(state.pool);
 
   const withArt = async (list) => Promise.all(list.map(async t => ({
@@ -573,7 +590,11 @@ async function respin() {
     withArt(picked.diversity)
   ]);
 
+  // 이 사이 더 최근 respin()이 시작됐다면, 이 응답은 버리고 화면을 안 건드림
+  if (myRequestId !== respinRequestId) return;
+
   renderResultPage(accuracyWithArt, diversityWithArt);
+  document.getElementById('btn-respin').disabled = false;
 }
 
 // ================= 렌더링 =================
