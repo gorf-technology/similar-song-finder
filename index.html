@@ -250,6 +250,14 @@
     font-size: 15px;
   }
 
+  .partial-note {
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-align: center;
+    margin-top: -4px;
+    margin-bottom: 16px;
+  }
+
   .version-tag {
     text-align: center;
     font-size: 11px;
@@ -308,7 +316,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v2.7</div>
+  <div class="version-tag">v2.8</div>
 </div>
 
 <script>
@@ -593,6 +601,9 @@ function renderResultPage(accuracyTracks, diversityTracks) {
   let html = '';
   if (allTracks.length > 0) {
     html += `<div class="result-list">${renderTrackRows(allTracks)}</div>`;
+    if (allTracks.length < CONFIG.pickFromAccuracy + CONFIG.pickFromDiversity) {
+      html += `<div class="partial-note">이 곡은 비슷한 곡 데이터가 많지 않아 ${allTracks.length}곡만 찾았어요.</div>`;
+    }
   }
   document.getElementById('result-body').innerHTML = html;
 }
@@ -693,7 +704,7 @@ async function sendInquiry() {
     if (!res.ok) {
       const errText = await res.text();
       console.error('EmailJS 전송 실패', res.status, errText);
-      statusEl.textContent = '전송에 실패했어요. (설정을 확인해주세요)';
+      statusEl.textContent = '지금은 보낼 수 없어요. 잠시 후 다시 시도해주세요.';
       return;
     }
     statusEl.textContent = '보냈습니다.';
