@@ -308,7 +308,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v2.4</div>
+  <div class="version-tag">v2.6</div>
 </div>
 
 <script>
@@ -326,9 +326,9 @@ const CONFIG = {
 
   jsonpTimeoutMs: 5000,             // JSONP 공통 타임아웃 (last.fm, iTunes)
 
-  emailjsServiceId: '',             // TODO
-  emailjsTemplateId: '',            // TODO
-  emailjsPublicKey: ''              // TODO
+  emailjsServiceId: 'service_fweqv7i',
+  emailjsTemplateId: 'template_b93zwli',
+  emailjsPublicKey: 'Qck7jS8TjdYKD11mf'
 };
 
 // ================= 상태 =================
@@ -680,7 +680,7 @@ async function sendInquiry() {
   }
   statusEl.textContent = '보내는 중...';
   try {
-    await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -690,9 +690,16 @@ async function sendInquiry() {
         template_params: { message: text }
       })
     });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('EmailJS 전송 실패', res.status, errText);
+      statusEl.textContent = '전송에 실패했어요. (설정을 확인해주세요)';
+      return;
+    }
     statusEl.textContent = '보냈습니다.';
     document.getElementById('inquiry-text').value = '';
   } catch (e) {
+    console.error('EmailJS 요청 자체가 실패', e);
     statusEl.textContent = '전송에 실패했어요. 잠시 후 다시 시도해주세요.';
   }
 }
