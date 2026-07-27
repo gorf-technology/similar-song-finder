@@ -317,7 +317,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v3.1</div>
+  <div class="version-tag">v3.2</div>
 </div>
 
 <script>
@@ -501,14 +501,12 @@ async function fetchAlbumArt(artist, track) {
     const url = `${CONFIG.itunesBaseUrl}?term=${term}&media=music&entity=song&limit=1`;
     const data = await jsonp(url);
     const result = data && data.results && data.results[0];
-    const art = (result && result.artworkUrl100)
-      ? result.artworkUrl100.replace('100x100', '200x200')
-      : null;
+    if (!result || !result.artworkUrl100) return null; // 실패는 캐싱 안 함 - 다음에 다시 시도됨
+    const art = result.artworkUrl100.replace('100x100', '200x200');
     albumArtCache.set(cacheKey, art);
     return art;
   } catch (e) {
-    albumArtCache.set(cacheKey, null);
-    return null;
+    return null; // 실패는 캐싱 안 함 - 다음에 다시 시도됨
   }
 }
 
