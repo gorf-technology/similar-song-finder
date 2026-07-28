@@ -255,14 +255,6 @@
     font-size: 15px;
   }
 
-  .partial-note {
-    font-size: 13px;
-    color: var(--ink-soft);
-    text-align: center;
-    margin-top: -4px;
-    margin-bottom: 16px;
-  }
-
   .version-tag {
     text-align: center;
     font-size: 11px;
@@ -279,7 +271,7 @@
   <!-- ===== 1페이지: 검색 ===== -->
   <section id="page-search" class="page active">
     <div class="wordmark">노래 찾기</div>
-    <div class="subtitle">노래를 검색하면 비슷한 노래 5곡을 찾아드려요</div>
+    <div class="subtitle">노래를 검색하면 비슷한 노래들을 찾아드려요</div>
 
     <div class="field">
       <label class="field-caption" for="input-artist">가수</label>
@@ -317,7 +309,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v3.2</div>
+  <div class="version-tag">v3.3</div>
 </div>
 
 <script>
@@ -665,9 +657,6 @@ function renderResultPage(accuracyTracks, diversityTracks) {
   let html = '';
   if (allTracks.length > 0) {
     html += `<div class="result-list">${renderTrackRows(allTracks)}</div>`;
-    if (allTracks.length < CONFIG.pickFromAccuracy + CONFIG.pickFromDiversity) {
-      html += `<div class="partial-note">이 곡은 비슷한 곡 데이터가 많지 않아 ${allTracks.length}곡만 찾았어요.</div>`;
-    }
   }
   document.getElementById('result-body').innerHTML = html;
 }
