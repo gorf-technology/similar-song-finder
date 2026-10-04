@@ -309,7 +309,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v3.3</div>
+  <div class="version-tag">v3.4</div>
 </div>
 
 <script>
@@ -326,6 +326,10 @@ const CONFIG = {
   pickFromDiversity: 2,             // 최종 결과 중 다양성 풀에서 뽑을 개수
 
   jsonpTimeoutMs: 5000,             // JSONP 공통 타임아웃 (last.fm, iTunes)
+
+  appName: '노래 찾기',               // 문의 메일 제목에 들어갈 앱 이름
+  appVersion: 'v3.4',               // 화면 버전 표기·sw.js 캐시 이름과 항상 같이 올릴 것
+  inquiryDailyCap: 5,               // 기기당 하루 문의 상한, 단위: 건 (EmailJS 월 200건을 모든 앱이 나눠 씀)
 
   emailjsServiceId: 'service_7t9mj84',
   emailjsTemplateId: 'template_b93zwli',
@@ -734,14 +738,34 @@ function toggleInquiryPanel() {
   document.getElementById('inquiry-panel').classList.toggle('open');
 }
 
+let inquirySending = false;   // 전송 중 연타 방지
+
+/** 오늘 이 기기에서 보낸 문의 수. Args: 없음. Returns: 건수. Units: 건 */
+function inquiryKey() { return 'inquiry-count-' + new Date().toLocaleDateString('sv-SE'); }  // 기기 현지 날짜 YYYY-MM-DD
+function inquiryCount() {
+  try { return parseInt(localStorage.getItem(inquiryKey()) || '0', 10) || 0; } catch (e) { return 0; }
+}
+function inquiryCountUp() {
+  try { localStorage.setItem(inquiryKey(), String(inquiryCount() + 1)); } catch (e) {}
+}
+
 /** Args: 없음 (textarea 값 사용). Returns: Promise<void> */
 async function sendInquiry() {
+  if (inquirySending) return;
   const text = document.getElementById('inquiry-text').value.trim();
   const statusEl = document.getElementById('inquiry-status');
+  const sendBtn = document.getElementById('btn-inquiry-send');
   if (!text) {
     statusEl.textContent = '내용을 입력해주세요.';
     return;
   }
+  if (inquiryCount() >= CONFIG.inquiryDailyCap) {
+    statusEl.textContent = '오늘은 더 보낼 수 없어요. 내일 다시 시도해주세요.';
+    return;
+  }
+  inquirySending = true;
+  sendBtn.disabled = true;
+  sendBtn.textContent = '보내는 중...';
   statusEl.textContent = '보내는 중...';
   try {
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -751,7 +775,7 @@ async function sendInquiry() {
         service_id: CONFIG.emailjsServiceId,
         template_id: CONFIG.emailjsTemplateId,
         user_id: CONFIG.emailjsPublicKey,
-        template_params: { message: text }
+        template_params: { message: text, app: `${CONFIG.appName} ${CONFIG.appVersion}`, ua: navigator.userAgent }
       })
     });
     if (!res.ok) {
@@ -760,11 +784,16 @@ async function sendInquiry() {
       statusEl.textContent = '지금은 보낼 수 없어요. 잠시 후 다시 시도해주세요.';
       return;
     }
+    inquiryCountUp();
     statusEl.textContent = '보냈습니다.';
     document.getElementById('inquiry-text').value = '';
   } catch (e) {
     console.error('EmailJS 요청 자체가 실패', e);
     statusEl.textContent = '전송에 실패했어요. 잠시 후 다시 시도해주세요.';
+  } finally {
+    inquirySending = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = '보내기';
   }
 }
 
