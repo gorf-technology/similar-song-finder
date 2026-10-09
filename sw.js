@@ -1,5 +1,5 @@
-// 캐시 버전 - index.html의 version-tag 표시(v3.4)와 항상 같이 올릴 것
-const CACHE_NAME = 'similar-song-finder-v3.4';
+// 캐시 버전 - index.html의 version-tag 표시(v3.5)와 항상 같이 올릴 것
+const CACHE_NAME = 'similar-song-finder-v3.5';
 
 const PRECACHE_URLS = [
   './',

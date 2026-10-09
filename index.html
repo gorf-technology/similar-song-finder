@@ -309,7 +309,7 @@
     </div>
   </section>
 
-  <div class="version-tag">v3.4</div>
+  <div class="version-tag" id="version-tag">v3.5</div>
 </div>
 
 <script>
@@ -319,7 +319,8 @@ const CONFIG = {
   lastfmBaseUrl: 'https://ws.audioscrobbler.com/2.0/',
   itunesBaseUrl: 'https://itunes.apple.com/search',
 
-  candidateLimit: 30,                // track.getSimilar 요청 개수
+  candidateLimit: 30,
+  topTracksPerArtist: 5,              // 아티스트 대체 경로에서 대표곡 후보 수                // track.getSimilar 요청 개수
   accuracyPoolSize: 18,              // dedup 후 상위 N개 = 정확도(accuracy) 풀 (30의 60%)
   diversityPoolSize: 12,             // 그 다음 N개 = 다양성(diversity) 풀 (30의 40%)
   pickFromAccuracy: 3,              // 최종 결과 중 정확도 풀에서 뽑을 개수
@@ -327,16 +328,14 @@ const CONFIG = {
 
   jsonpTimeoutMs: 5000,             // JSONP 공통 타임아웃 (last.fm, iTunes)
 
-  appName: '노래 찾기',               // 문의 메일 제목에 들어갈 앱 이름
-  appVersion: 'v3.4',               // 화면 버전 표기·sw.js 캐시 이름과 항상 같이 올릴 것
-  inquiryDailyCap: 5,               // 기기당 하루 문의 상한, 단위: 건 (EmailJS 월 200건을 모든 앱이 나눠 씀)
-
   emailjsServiceId: 'service_7t9mj84',
   emailjsTemplateId: 'template_b93zwli',
   emailjsPublicKey: 'Qck7jS8TjdYKD11mf'
 };
 
 // ================= 상태 =================
+const APP_VERSION = 'v3.5';  // sw.js CACHE_NAME과 같이 올릴 것
+
 const state = {
   pool: [],            // dedup 완료된 현재 검색의 후보 pool (match 내림차순)
   searchedArtist: '',
@@ -437,6 +436,56 @@ async function fetchSimilarTracks(artist, track) {
 }
 
 /**
+ * 유사 아티스트 목록 조회 (곡 단위 유사곡 데이터가 없을 때의 대체 경로)
+ * Args: artist (string)
+ * Returns: Promise<Array<{name:null, artist, match}>> - name은 respin에서 대표곡으로 채움
+ */
+async function fetchSimilarArtists(artist) {
+  const url = `${CONFIG.lastfmBaseUrl}?method=artist.getsimilar`
+    + `&artist=${encodeURIComponent(artist)}`
+    + `&limit=${CONFIG.candidateLimit}&api_key=${CONFIG.lastfmApiKey}&format=json`;
+  const data = await jsonp(url);
+  if (data && data.error) {
+    console.error('last.fm artist.getsimilar error', data.error, data.message);
+    return [];
+  }
+  const raw = data && data.similarartists && data.similarartists.artist;
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : [raw];
+  return arr
+    .filter(a => a.name)
+    .map(a => ({ name: null, artist: a.name, match: parseFloat(a.match) || 0 }));
+}
+
+const topTracksCache = new Map(); // key: artist(lowercase) -> 대표곡 이름 배열
+
+/**
+ * 아티스트의 인기곡 중 하나를 무작위로 반환
+ * Args: artist (string)
+ * Returns: Promise<string|null> - 곡 이름, 실패 시 null
+ */
+async function pickTopTrack(artist) {
+  const key = artist.toLowerCase();
+  let names = topTracksCache.get(key);
+  if (!names) {
+    try {
+      const url = `${CONFIG.lastfmBaseUrl}?method=artist.gettoptracks`
+        + `&artist=${encodeURIComponent(artist)}`
+        + `&limit=${CONFIG.topTracksPerArtist}&api_key=${CONFIG.lastfmApiKey}&format=json`;
+      const data = await jsonp(url);
+      const raw = data && data.toptracks && data.toptracks.track;
+      const arr = raw ? (Array.isArray(raw) ? raw : [raw]) : [];
+      names = arr.map(t => t.name).filter(Boolean);
+      if (names.length > 0) topTracksCache.set(key, names); // 성공만 캐싱
+    } catch (e) {
+      names = [];
+    }
+  }
+  if (!names || names.length === 0) return null;
+  return names[Math.floor(Math.random() * names.length)];
+}
+
+/**
  * 아티스트 중복 제거 (첫 등장만 유지, 원래 순서 보존)
  * Args: tracks (Array)
  * Returns: Array - 아티스트당 1곡만 남은 배열
@@ -494,7 +543,9 @@ async function fetchAlbumArt(artist, track) {
 
   try {
     const term = encodeURIComponent(`${artist} ${track}`);
-    const url = `${CONFIG.itunesBaseUrl}?term=${term}&media=music&entity=song&limit=1`;
+    // media=music을 붙이면 아이폰 UA에서 musics:// 앱 스킴으로 301 리다이렉트되어
+    // script 태그가 따라가지 못함 → entity=song만 사용
+    const url = `${CONFIG.itunesBaseUrl}?term=${term}&entity=song&limit=1`;
     const data = await jsonp(url);
     const result = data && data.results && data.results[0];
     if (!result || !result.artworkUrl100) return null; // 실패는 캐싱 안 함 - 다음에 다시 시도됨
@@ -572,7 +623,14 @@ async function handleSearch() {
       `<b>${escapeHtml(corrected.artist)} - ${escapeHtml(corrected.track)}</b>와 비슷한 노래`;
 
     const rawTracks = await fetchSimilarTracks(corrected.artist, corrected.track);
-    const deduped = dedupByArtist(rawTracks);
+    let deduped = dedupByArtist(rawTracks);
+
+    // last.fm에 이 곡의 유사곡 데이터가 없으면(신곡 등) 비슷한 가수 기준으로 대체
+    if (deduped.length === 0) {
+      const searchedKey = corrected.artist.toLowerCase();
+      const artists = await fetchSimilarArtists(corrected.artist);
+      deduped = dedupByArtist(artists.filter(a => a.artist.toLowerCase() !== searchedKey));
+    }
 
     if (deduped.length === 0) {
       renderErrorState('그런 곡은 찾을 수 없어요. 가수와 곡 제목을 다시 확인해주세요.');
@@ -611,10 +669,14 @@ async function respin() {
 
   const picked = sampleRatio(state.pool);
 
-  const withArt = async (list) => Promise.all(list.map(async t => ({
-    ...t,
-    art: await fetchAlbumArt(t.artist, t.name)
-  })));
+  const withArt = async (list) => {
+    const filled = await Promise.all(list.map(async t => {
+      const name = t.name || await pickTopTrack(t.artist);
+      if (!name) return null;
+      return { ...t, name, art: await fetchAlbumArt(t.artist, name) };
+    }));
+    return filled.filter(Boolean);
+  };
 
   const [accuracyWithArt, diversityWithArt] = await Promise.all([
     withArt(picked.accuracy),
@@ -738,34 +800,14 @@ function toggleInquiryPanel() {
   document.getElementById('inquiry-panel').classList.toggle('open');
 }
 
-let inquirySending = false;   // 전송 중 연타 방지
-
-/** 오늘 이 기기에서 보낸 문의 수. Args: 없음. Returns: 건수. Units: 건 */
-function inquiryKey() { return 'inquiry-count-' + new Date().toLocaleDateString('sv-SE'); }  // 기기 현지 날짜 YYYY-MM-DD
-function inquiryCount() {
-  try { return parseInt(localStorage.getItem(inquiryKey()) || '0', 10) || 0; } catch (e) { return 0; }
-}
-function inquiryCountUp() {
-  try { localStorage.setItem(inquiryKey(), String(inquiryCount() + 1)); } catch (e) {}
-}
-
 /** Args: 없음 (textarea 값 사용). Returns: Promise<void> */
 async function sendInquiry() {
-  if (inquirySending) return;
   const text = document.getElementById('inquiry-text').value.trim();
   const statusEl = document.getElementById('inquiry-status');
-  const sendBtn = document.getElementById('btn-inquiry-send');
   if (!text) {
     statusEl.textContent = '내용을 입력해주세요.';
     return;
   }
-  if (inquiryCount() >= CONFIG.inquiryDailyCap) {
-    statusEl.textContent = '오늘은 더 보낼 수 없어요. 내일 다시 시도해주세요.';
-    return;
-  }
-  inquirySending = true;
-  sendBtn.disabled = true;
-  sendBtn.textContent = '보내는 중...';
   statusEl.textContent = '보내는 중...';
   try {
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -775,7 +817,9 @@ async function sendInquiry() {
         service_id: CONFIG.emailjsServiceId,
         template_id: CONFIG.emailjsTemplateId,
         user_id: CONFIG.emailjsPublicKey,
-        template_params: { message: text, app: `${CONFIG.appName} ${CONFIG.appVersion}`, ua: navigator.userAgent }
+        template_params: {
+          message: `${text}\n\n앱: 노래 찾기 ${APP_VERSION}\n기기: ${navigator.userAgent}`
+        }
       })
     });
     if (!res.ok) {
@@ -784,16 +828,11 @@ async function sendInquiry() {
       statusEl.textContent = '지금은 보낼 수 없어요. 잠시 후 다시 시도해주세요.';
       return;
     }
-    inquiryCountUp();
     statusEl.textContent = '보냈습니다.';
     document.getElementById('inquiry-text').value = '';
   } catch (e) {
     console.error('EmailJS 요청 자체가 실패', e);
     statusEl.textContent = '전송에 실패했어요. 잠시 후 다시 시도해주세요.';
-  } finally {
-    inquirySending = false;
-    sendBtn.disabled = false;
-    sendBtn.textContent = '보내기';
   }
 }
 
